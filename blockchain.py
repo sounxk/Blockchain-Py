@@ -145,5 +145,5 @@ class BlockChain(object):
             block_data['proof'],
             block_data['previous_hash'],
             block_data['transactions'],
-            timestamp=block_data['timestamp']
+            
         )
