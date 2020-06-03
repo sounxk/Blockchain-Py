@@ -1,4 +1,3 @@
-  
 import hashlib
 import json
 from time import time
@@ -24,9 +23,10 @@ class Block(object):
     def __repr__(self):
         return "{} - {} - {} - {} - {}".format(self.index, self.proof, self.previous_hash, self.transactions, self.timestamp)
 
-
+#Main BlockChain class which will manage the chain, store transactions, and have other functions in it
 class BlockChain(object):
 
+    #constructor creates list to store the blockchain and another to store the transactions in it
     def __init__(self):
         self.chain = []
         self.current_node_transactions = []
@@ -37,10 +37,12 @@ class BlockChain(object):
     def get_serialized_chain(self):
         return [vars(block) for block in self.chain]
 
+    # creation of the GENESIS block
     def create_genesis_block(self):
         self.create_new_block(proof=0, previous_hash=0)
 
     def create_new_block(self, proof, previous_hash):
+      # creates a new block in the blockchain and returns the last block to the chain
         block = Block(
             index=len(self.chain),
             proof=proof,
@@ -69,6 +71,7 @@ class BlockChain(object):
         return True
 
     def create_new_transaction(self, sender, recipient, amount):
+       # adds a new transaction into the list of transactions which would go into the next mined block
         self.current_node_transactions.append({
             'sender': sender,
             'recipient': recipient,
@@ -100,6 +103,7 @@ class BlockChain(object):
 
     @property
     def get_last_block(self):
+      # returns last block in the chain
         return self.chain[-1]
 
     def is_valid_chain(self):
@@ -141,6 +145,7 @@ class BlockChain(object):
         return vars(block)  # Return a native Dict type object
 
     def create_node(self, address):
+       # add a new node to the list of nodes
         self.nodes.add(address)
         return True
 
