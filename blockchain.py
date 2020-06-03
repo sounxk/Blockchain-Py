@@ -1,167 +1,149 @@
+import time
 import hashlib
-import json
-from time import time
-from uuid import uuid4
-from urllib.parse import urlparse
 
-from flask import Flask, jsonify, request
+class Block(object):
+
+    def __init__(self, index, proof, previous_hash, transactions, timestamp=None):
+        self.index = index
+        self.proof = proof
+        self.previous_hash = previous_hash
+        self.transactions = transactions
+        self.timestamp = timestamp or time.time()
+
+    @property
+    def get_block_hash(self):
+        block_string = "{}{}{}{}{}".format(self.index, self.proof, self.previous_hash, self.transactions, self.timestamp)
+        return hashlib.sha256(block_string.encode()).hexdigest()
+
+    def __repr__(self):
+        return "{} - {} - {} - {} - {}".format(self.index, self.proof, self.previous_hash, self.transactions, self.timestamp)
 
 
 class BlockChain(object):
-    """ Main BlockChain class """
+
     def __init__(self):
         self.chain = []
-        self.current_transactions = []
+        self.current_node_transactions = []
         self.nodes = set()
-        # create the genesis block
-        self.new_block(previous_hash=1, proof=100)
+        self.create_genesis_block()
 
-    @staticmethod
-    def hash(block):
-        # hashes a block
-        # also make sure that the transactions are ordered otherwise we will have insonsistent hashes!
-        block_string = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
+    @property
+    def get_serialized_chain(self):
+        return [vars(block) for block in self.chain]
 
-    def new_block(self, proof, previous_hash=None):
-        # creates a new block in the blockchain
-        block = {
-            'index': len(self.chain)+1,
-            'timestamp': time(),
-            'transactions': self.current_transactions,
-            'proof': proof,
-            'previous_hash': previous_hash or self.hash(self.chain[-1]),
-        }
+    def create_genesis_block(self):
+        self.create_new_block(proof=0, previous_hash=0)
 
-        # reset the current list of transactions
-        self.current_transactions = []
+    def create_new_block(self, proof, previous_hash):
+        block = Block(
+            index=len(self.chain),
+            proof=proof,
+            previous_hash=previous_hash,
+            transactions=self.current_node_transactions
+        )
+        self.current_node_transactions = []  # Reset the transaction list
+
         self.chain.append(block)
         return block
 
-    @property
-    def last_block(self):
-        # returns last block in the chain
-        return self.chain[-1]
+    @staticmethod
+    def is_valid_block(block, previous_block):
+        if previous_block.index + 1 != block.index:
+            return False
 
-    def new_transaction(self, sender, recipient, amount):
-        # adds a new transaction into the list of transactions
-        # these transactions go into the next mined block
-        self.current_transactions.append({
-            "sender":sender,
-            "recient":recipient,
-            "data":amount,
+        elif previous_block.get_block_hash != block.previous_hash:
+            return False
+
+        elif not BlockChain.is_valid_proof(block.proof, previous_block.proof):
+            return False
+
+        elif block.timestamp <= previous_block.timestamp:
+            return False
+
+        return True
+
+    def create_new_transaction(self, sender, recipient, amount):
+        self.current_node_transactions.append({
+            'sender': sender,
+            'recipient': recipient,
+            'amount': amount
         })
-        return int(self.last_block['index'])+1
+        return True
 
-    def proof_of_work(self, last_proof):
-        # simple proof of work algorithm
-        # find a number p' such as hash(pp') containing leading 4 zeros where p is the previous p'
-        # p is the previous proof and p' is the new proof
-        proof = 0
-        while self.validate_proof(last_proof, proof) is False:
+    @staticmethod
+    def is_valid_transaction():
+        # Not Implemented
+        pass
+
+    @staticmethod
+    def create_proof_of_work(previous_proof):
+        """
+        Generate "Proof Of Work"
+        A very simple `Proof of Work` Algorithm -
+            - Find a number such that, sum of the number and previous POW number is divisible by 7
+        """
+        proof = previous_proof + 1
+        while not BlockChain.is_valid_proof(proof, previous_proof):
             proof += 1
+
         return proof
 
     @staticmethod
-    def validate_proof(last_proof, proof):
-        # validates the proof: does hash(last_proof, proof) contain 4 leading zeroes?
-        guess = f'{last_proof}{proof}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == "0000"
+    def is_valid_proof(proof, previous_proof):
+        return (proof + previous_proof) % 7 == 0
 
-    def register_node(self, address):
-        # add a new node to the list of nodes
-        parsed_url = urlparse(address)
-        self.nodes.add(parsed_url.netloc)
+    @property
+    def get_last_block(self):
+        return self.chain[-1]
 
-    def full_chain(self):
-        # xxx returns the full chain and a number of blocks
-        pass
+    def is_valid_chain(self):
+        """
+        Check if given blockchain is valid
+        """
+        previous_block = self.chain[0]
+        current_index = 1
 
+        while current_index < len(self.chain):
 
-# initiate the node
-app = Flask(__name__)
-# generate a globally unique address for this node
-node_identifier = str(uuid4()).replace('-', '')
-# initiate the Blockchain
-blockchain = BlockChain()
+            block = self.chain[current_index]
 
-@app.route('/mine', methods=['GET'])
-def mine():
+            if not self.is_valid_block(block, previous_block):
+                return False
 
-    # first we need to run the proof of work algorithm to calculate the new proof..
-    last_block = blockchain.last_block
-    last_proof = last_block['proof']
-    proof = blockchain.proof_of_work(last_proof)
+            previous_block = block
+            current_index += 1
 
-    # we must recieve reward for finding the proof in form of receiving 1 Coin
-    blockchain.new_transaction(
-        sender=0,
-        recipient=node_identifier,
-        amount=1,
-    )
+        return True
 
-    # forge the new block by adding it to the chain
-    previous_hash = blockchain.hash(last_block)
-    block = blockchain.new_block(proof, previous_hash)
+    def mine_block(self, miner_address):
+        # Sender "0" means that this node has mined a new block
+        # For mining the Block(or finding the proof), we must be awarded with some amount(in our case this is 1)
+        self.create_new_transaction(
+            sender="0",
+            recipient=miner_address,
+            amount=1,
+        )
 
-    response = {
-        'message': "Forged new block.",
-        'index': block['index'],
-        'transactions': block['transactions'],
-        'proof': block['proof'],
-        'previous_hash': block['previous_hash'],
-    }
-    return jsonify(response, 200)
+        last_block = self.get_last_block
 
-@app.route('/transaction/new', methods=['GET'])
-def new_transaction():
+        last_proof = last_block.proof
+        proof = self.create_proof_of_work(last_proof)
 
-    values = request.get_json()
-    required = ['sender', 'recipient', 'amont']
+        last_hash = last_block.get_block_hash
+        block = self.create_new_block(proof, last_hash)
 
-    if not all(k in values for k in required):
-        return 'Missing values.', 400
+        return vars(block)  # Return a native Dict type object
 
-    # create a new transaction
-    index = blockchain.new_transaction(
-        sender = values['sender'],
-        recipient = values['recipient'],
-        amount = values['amount']
-    )
+    def create_node(self, address):
+        self.nodes.add(address)
+        return True
 
-    response = {
-        'message': f'Transaction will be added to the Block {index}',
-    }
-    return jsonify(response, 200)
-
-@app.route('/chain', methods=['GET'])
-def full_chain():
-    response = {
-        'chain': blockchain.chain,
-        'length': len(blockchain.chain),
-    }
-    return jsonify(response), 200
-
-@app.route('/nodes/register', methods=['POST'])
-def register_nodes():
-    values = request.get_json()
-
-    print('values',values)
-    nodes = values.get('nodes')
-    if nodes is None:
-        return "Error: Please supply a valid list of nodes", 400
-
-    # register each newly added node
-    for node in nodes: blockchain.register_node(node)
-
-    response = {
-        'message': "New nodes have been added",
-        'all_nodes': list(blockchain.nodes),
-    }
-
-    return jsonify(response), 201
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    @staticmethod
+    def get_block_object_from_block_data(block_data):
+        return Block(
+            block_data['index'],
+            block_data['proof'],
+            block_data['previous_hash'],
+            block_data['transactions'],
+            timestamp=block_data['timestamp']
+        )
