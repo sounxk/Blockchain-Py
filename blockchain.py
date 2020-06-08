@@ -4,7 +4,7 @@ from time import time
 from uuid import uuid4
 from urllib.parse import urlparse
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 #Main BlockChain class which will manage the chain, store transactions, and have other functions in it
 class BlockChain(object):
